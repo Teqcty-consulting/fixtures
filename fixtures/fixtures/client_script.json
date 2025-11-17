@@ -1,0 +1,200 @@
+[
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Material Request",
+  "enabled": 0,
+  "modified": "2025-11-06 09:43:07.736444",
+  "module": null,
+  "name": "Auto Fill",
+  "script": "/*\r\nfrappe.ui.form.on('Material Request', {\r\n    onload: function(frm) {\r\n        frappe.call({\r\n            method: \"frappe.client.get_list\",\r\n            args: {\r\n                doctype: \"Employee\",\r\n                fields: [\"name\"],\r\n                filters: {\r\n                    user_id: frappe.session.user\r\n                },\r\n                limit_page_length: 1\r\n            },\r\n            callback: function(r) {\r\n                if (r.message && r.message.length > 0) {\r\n                    let employee_name = r.message[0].name;\r\n\r\n                    frappe.call({\r\n                        method: \"frappe.client.get\",\r\n                        args: {\r\n                            doctype: \"Employee\",\r\n                            name: employee_name\r\n                        },\r\n                        callback: function(res) {\r\n                            if (res.message && res.message.department) {\r\n                                frm.set_value(\"department\", res.message.department);\r\n                            }\r\n                        }\r\n                    });\r\n                }\r\n            }\r\n        });\r\n    }\r\n});\r\n\r\n*/\r\n/*\r\nfrappe.ui.form.on('Material Request', {\r\n    onload: function(frm) {\r\n        // Get current user's roles\r\n        const roles = frappe.user_roles;\r\n        \r\n        // If user has Department User role\r\n        if (roles.includes('Material Request User')) {\r\n            // Restrict Purpose options\r\n            frm.set_df_property('material_request_type', 'options', ['Material Transfer']);\r\n            \r\n            // Optionally auto-set it\r\n            frm.set_value('material_request_type', 'Material Issue');\r\n        }\r\n    }\r\n});\r\n*/\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Web Page",
+  "enabled": 0,
+  "modified": "2025-10-30 13:19:21.093752",
+  "module": null,
+  "name": "Remove power by",
+  "script": ".app-footer {\r\n  display: none !important;\r\n}",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Material Request",
+  "enabled": 0,
+  "modified": "2025-10-29 13:35:49.242471",
+  "module": null,
+  "name": "StockCheckAutomation",
+  "script": "frappe.ui.form.on(\"Material Request\", {\r\n    refresh(frm) {\r\n        // Run only for draft (unsubmitted) requests with items\r\n // if (frm.doc.docstatus !== 0 || !frm.doc.items?.length) return;\r\n if (frm.doc.docstatus !== 0 ) return;\r\n\r\n        // Clear old buttons\r\n        frm.clear_custom_buttons();\r\n\r\n        // Fetch stock quantities\r\n        frappe.call({\r\n            method: \"frappe.client.get_list\",\r\n            args: {\r\n                doctype: \"Bin\",\r\n                fields: [\"item_code\", \"warehouse\", \"actual_qty\"],\r\n                filters: [\r\n                    [\"item_code\", \"in\", frm.doc.items.map(i => i.item_code)],\r\n                    [\"warehouse\", \"in\", frm.doc.items.map(i => i.warehouse)]\r\n                ],\r\n                limit_page_length: 500\r\n            },\r\n            callback(r) {\r\n                if (!r.message) return;\r\n\r\n                let all_available = true;\r\n\r\n                frm.doc.items.forEach(it => {\r\n                    const bin = r.message.find(\r\n                        b => b.item_code === it.item_code && b.warehouse === it.warehouse\r\n                    );\r\n                    const available = bin ? bin.actual_qty : 0;\r\n                    if (available < it.qty) all_available = false;\r\n                });\r\n\r\n                // Hide the default \"Create\" button group first\r\n                frm.page.clear_primary_action();\r\n                frm.page.clear_secondary_action();\r\n\r\n                if (all_available) {\r\n                    // ✅ Enough stock → show Issue button\r\n                    frm.add_custom_button(\"Issue Material\", () => {\r\n                        frappe.call({\r\n                            method: \"erpnext.stock.doctype.material_request.material_request.make_stock_entry\",\r\n                            args: { source_name: frm.doc.name },\r\n                            callback(res) {\r\n                                if (res.message) {\r\n                                    frappe.model.sync(res.message);\r\n                                    frappe.set_route(\"Form\", res.message.doctype, res.message.name);\r\n                                }\r\n                            }\r\n                        });\r\n                    }, \"Create\");\r\n\r\n                    frappe.show_alert({\r\n                        message: __(\"Stock available. You can issue the material.\"),\r\n                        indicator: \"green\"\r\n                    });\r\n\r\n                } else {\r\n                    // ❌ Not enough stock → only show Create PR\r\n                    frm.add_custom_button(\"Create Purchase Request\", () => {\r\n                        frappe.call({\r\n                            method: \"erpnext.buying.doctype.material_request.material_request.make_purchase_request\",\r\n                            args: { source_name: frm.doc.name },\r\n                            callback(res) {\r\n                                if (res.message) {\r\n                                    frappe.model.sync(res.message);\r\n                                    frappe.set_route(\"Form\", res.message.doctype, res.message.name);\r\n                                }\r\n                            }\r\n                        });\r\n                    }, \"Create\");\r\n\r\n                    frappe.show_alert({\r\n                        message: __(\"Insufficient stock. Please create a Purchase Request.\"),\r\n                        indicator: \"orange\"\r\n                    });\r\n                }\r\n            }\r\n        });\r\n    }\r\n});\r\n",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Material Request",
+  "enabled": 0,
+  "modified": "2025-10-29 15:01:39.621541",
+  "module": null,
+  "name": "Check Stock Availability",
+  "script": "frappe.ui.form.on('Material Request', {\r\n    refresh: function(frm) {\r\n        if (frappe.user.has_role(\"Warehouse User\")) {\r\n            frm.add_custom_button(__('Check Stock Availability'), function() {\r\n                frappe.set_route('query-report', 'Stock Balance', {\r\n                    company: frm.doc.company\r\n                });\r\n            }, 'Tools');\r\n        }\r\n    }\r\n});\r\n",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Material Request",
+  "enabled": 0,
+  "modified": "2025-10-30 13:19:30.683195",
+  "module": null,
+  "name": "Workflow script",
+  "script": "frappe.ui.form.on(\"Material Request\", {\r\n    refresh(frm) {\r\n        // Small delay to ensure workflow actions are loaded\r\n        frappe.timeout(0.5).then(() => {\r\n            const actions = frm.page.get_workflow_actions?.() || [];\r\n action.label = \"PR\"\r\n            actions.forEach(action => {\r\n                // Rename actions based on label\r\n                if (action.label === \"Create Purchase Request\") {\r\n                    action.label = \"PR\";\r\n                    console.log(\"✅ Renamed 'Create Purchase Request' → 'PR'\");\r\n                }\r\n                if (action.label === \"Issue Material\") {\r\n                    action.label = \"Issue\";\r\n                    console.log(\"✅ Renamed 'Issue Material' → 'Issue'\");\r\n                }\r\n            });\r\n\r\n            // Re-render workflow actions after renaming\r\n            frm.page.clear_primary_action();\r\n            frm.page.set_primary_action(actions[0]?.label || \"\", actions[0]?.action);\r\n            frm.page.refresh_primary_action_menu?.();\r\n        });\r\n    }\r\n});\r\n",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Material Request",
+  "enabled": 0,
+  "modified": "2025-10-29 16:36:42.900599",
+  "module": null,
+  "name": "Auto Decision on Stock Check",
+  "script": "frappe.ui.form.on('Material Request', {\r\n    before_save(frm) {\r\n        if (frappe.user.has_role('Warehouse Head') && frm.doc.docstatus === 0) {\r\n            let total_shortage = 0;\r\n            let items_to_check = frm.doc.items || [];\r\n\r\n            frappe.call({\r\n                method: \"frappe.client.get_list\",\r\n                args: {\r\n                    doctype: \"Bin\",\r\n                    fields: [\"actual_qty\", \"warehouse\", \"item_code\"],\r\n                    filters: {\r\n                        warehouse: frm.doc.set_warehouse || \"\",\r\n                        item_code: [\"in\", items_to_check.map(i => i.item_code)]\r\n                    },\r\n                    limit_page_length: 100\r\n                },\r\n                callback: function (r) {\r\n                    if (!r.message) return;\r\n                    let stock_info = {};\r\n                    r.message.forEach(d => { stock_info[d.item_code] = d.actual_qty; });\r\n\r\n                    let shortage_found = false;\r\n                    items_to_check.forEach(item => {\r\n                        let available = stock_info[item.item_code] || 0;\r\n                        if (available < item.qty) shortage_found = true;\r\n                    });\r\n\r\n                    if (shortage_found) {\r\n                        frappe.msgprint(\"⚠️ Stock insufficient — Proceed with <b>Purchase Request</b>.\");\r\n                        frm.set_value(\"decision\", \"Purchase Request\");\r\n                    } else {\r\n                        frappe.msgprint(\"✅ Sufficient stock — Proceed with <b>Material Issue</b>.\");\r\n                        frm.set_value(\"decision\", \"Material Issue\");\r\n                    }\r\n                }\r\n            });\r\n        }\r\n    }\r\n});\r\n",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Material Request",
+  "enabled": 0,
+  "modified": "2025-10-30 14:17:25.224005",
+  "module": null,
+  "name": "MR Issue or Purchase",
+  "script": "frappe.ui.form.on('Material Request', {\r\n    async after_save(frm) {\r\n        // Only for Warehouse Users, and if still draft\r\n        if (\r\n            frappe.user.has_role(\"Warehouse User\") &&\r\n            frm.doc.docstatus === 0 &&\r\n            frm.doc.workflow_state === \"Approved\"\r\n        ) {\r\n            let has_insufficient_stock = false;\r\n\r\n            // Loop through items and check available stock\r\n            for (let item of frm.doc.items) {\r\n                let stock_qty = await frappe.db.get_value(\"Bin\", {\r\n                    item_code: item.item_code,\r\n                    warehouse: item.warehouse || frm.doc.set_warehouse\r\n                }, \"actual_qty\");\r\n\r\n                const available_qty = stock_qty?.message?.actual_qty || 0;\r\n                console.log(`${item.item_code} available: ${available_qty}, required: ${item.qty}`);\r\n\r\n                if (available_qty < item.qty) {\r\n                    has_insufficient_stock = true;\r\n                    break;\r\n                }\r\n            }\r\n\r\n            // Update purpose based on stock\r\n            const new_purpose = has_insufficient_stock ? \"Purchase\" : \"Material Issue\";\r\n            frm.set_value(\"material_request_type\", new_purpose);\r\n            await frm.save();\r\n\r\n            // Auto-submit after decision\r\n            frappe.call({\r\n                method: \"frappe.client.submit\",\r\n                args: {\r\n                    doctype: frm.doc.doctype,\r\n                    name: frm.doc.name\r\n                },\r\n                callback: function(r) {\r\n                    if (!r.exc) {\r\n                        const msg = has_insufficient_stock\r\n                            ? \"Stock not sufficient — Material Request submitted for Purchase Request.\"\r\n                            : \"Stock available — Material Request submitted for Material Issue.\";\r\n                        frappe.msgprint(__(msg));\r\n                        frm.reload_doc();\r\n                    }\r\n                }\r\n            });\r\n        }\r\n    }\r\n});\r\n",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Material Request",
+  "enabled": 0,
+  "modified": "2025-11-05 21:57:41.163193",
+  "module": null,
+  "name": "Hide Buttons",
+  "script": "frappe.ui.form.on('Material Request', {\r\n  refresh(frm) {\r\n    const restrictedRoles = ['Material Request User', 'Material Request Approver'];\r\n    const isRestricted = restrictedRoles.some(role => frappe.user_roles.includes(role));\r\n\r\n    if (frm.doc.workflow_state === 'Approved' && isRestricted) {\r\n      // Remove all custom buttons\r\n      frm.clear_custom_buttons();\r\n\r\n      // Remove primary action (if any)\r\n      frm.page.clear_primary_action();\r\n\r\n      // Remove dropdown actions\r\n      frm.page.clear_actions();\r\n\r\n      // Optional: hide menu icon\r\n      if (frm.page.btn_secondary) {\r\n        frm.page.btn_secondary.hide();\r\n      }\r\n    }\r\n  }\r\n});\r\n",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Material Request",
+  "enabled": 0,
+  "modified": "2025-11-05 21:58:42.461098",
+  "module": null,
+  "name": "Hide Create Purchase Order Button for Warehouse",
+  "script": "frappe.ui.form.on('Material Request', {\r\n    refresh: function(frm) {\r\n        // Check if user has either Warehouse User or Warehouse Head role\r\n        if (frappe.user.has_role(\"Warehouse User\") || frappe.user.has_role(\"Warehouse Head\")) {\r\n            \r\n            // 🔹 Hide unwanted \"Create\" options\r\n            frm.page.remove_inner_button(\"Purchase Order\", \"Create\");\r\n            frm.page.remove_inner_button(\"Request for Quotation\", \"Create\");\r\n            frm.page.remove_inner_button(\"Supplier Quotation\", \"Create\");\r\n\r\n            // 🔹 Hide the \"Stop\" button if it appears\r\n            if (frm.page && frm.page.btn_secondary) {\r\n                // Find and hide Stop button in secondary actions\r\n                const stopBtn = document.querySelector('button[data-label=\"Stop\"]');\r\n                if (stopBtn) stopBtn.style.display = \"none\";\r\n            }\r\n\r\n            // 🔹 Optionally hide entire Create group if no allowed options remain\r\n            frappe.after_ajax(() => {\r\n                let createGroup = document.querySelector('button[data-label=\"Create\"]');\r\n                if (createGroup) {\r\n                    let visibleOptions = false;\r\n                    document.querySelectorAll('.dropdown-menu li a').forEach(link => {\r\n                        if (link.textContent.includes(\"Material Issue\")) visibleOptions = true;\r\n                    });\r\n                    if (!visibleOptions) createGroup.style.display = \"none\";\r\n                }\r\n            });\r\n\r\n            // Optional debug message (remove after testing)\r\n            // frappe.msgprint(\"Restricted Create and Stop options for Warehouse roles\");\r\n        }\r\n    }\r\n});\r\n",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Material Request",
+  "enabled": 0,
+  "modified": "2025-11-05 13:29:38.444086",
+  "module": null,
+  "name": "Fill Department",
+  "script": "frappe.ui.form.on('Material Request', {\r\n    onload: function(frm) {\r\n        // Only set department if it's empty\r\n        if (!frm.doc.custom_department) {\r\n            frappe.call({\r\n                method: 'frappe.client.get_list',\r\n                args: {\r\n                    doctype: 'Employee',\r\n                    filters: { 'user_id': frappe.session.user },\r\n                    fields: ['name', 'department'],\r\n                    limit_page_length: 1\r\n                },\r\n                callback: function(r) {\r\n                    if (r && r.message && r.message.length > 0) {\r\n                        const emp = r.message[0];\r\n                        if (emp.department) {\r\n                            frm.set_value('custom_department', emp.department);\r\n                            // Optional: make it read-only\r\n                            frm.set_df_property('custom_department', 'read_only', 1);\r\n                        }\r\n                    }\r\n                }\r\n            });\r\n        }\r\n    }\r\n});\r\n",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Material Request",
+  "enabled": 0,
+  "modified": "2025-11-05 15:15:42.256448",
+  "module": null,
+  "name": "Auto Set Company",
+  "script": "frappe.ui.form.on('Material Request', {\r\n  onload: function(frm) {\r\n    if (!frm.doc.company) {\r\n      frm.set_value('company', 'SHREE GANESH AGROVET PRIVATE LIMITED');\r\n    }\r\n  }\r\n});\r\n",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Material Request",
+  "enabled": 0,
+  "modified": "2025-11-03 00:17:47.596533",
+  "module": null,
+  "name": "Auto Fill Cost Center",
+  "script": "frappe.ui.form.on('Material Request', {\r\n    onload(frm) {\r\n        if (!frm.doc.cost_center) {\r\n            frappe.db.get_value('User Department Mapping', {'user': frappe.session.user}, \r\n                ['department', 'cost_center'], \r\n                (r) => {\r\n                    if (r) {\r\n                        if (r.department) frm.set_value('department', r.department);\r\n                        if (r.cost_center) frm.set_value('cost_center', r.cost_center);\r\n                    }\r\n                }\r\n            );\r\n        }\r\n    }\r\n});\r\n",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Material Request",
+  "enabled": 1,
+  "modified": "2025-11-05 15:54:49.441427",
+  "module": null,
+  "name": "Popup",
+  "script": "frappe.ui.form.on('Material Request', {\r\n    before_workflow_action: function(frm) {\r\n        if (frm.selected_workflow_action === 'Reject') {\r\n            frm.workflow_action_pending = true;\r\n\r\n            let dialog = new frappe.ui.Dialog({\r\n                title: __('Please enter Rejection Comments'),\r\n                fields: [\r\n                    {\r\n                        fieldname: 'rejection_comments',\r\n                        fieldtype: 'Small Text',\r\n                        label: __('Comments'),\r\n                        reqd: 1\r\n                    }\r\n                ],\r\n                primary_action_label: __('Submit'),\r\n                primary_action: function(values) {\r\n                    let comments = values.rejection_comments;\r\n\r\n                    // Disable the button while processing\r\n                    dialog.get_primary_btn().text(__('Saving...'));\r\n                    dialog.get_primary_btn().prop('disabled', true);\r\n\r\n                    // Add the comment to the timeline (and wait for it to save)\r\n                    frappe.call({\r\n                        method: \"frappe.desk.form.utils.add_comment\",\r\n                        args: {\r\n                            reference_doctype: frm.doctype,\r\n                            reference_name: frm.doc.name,\r\n                            content: `❌ Rejected with comments: ${comments}`,\r\n                            comment_email: frappe.session.user,\r\n                            comment_by: frappe.session.user_fullname,\r\n                            comment_type: \"Info\"\r\n                        },\r\n                        callback: function(r) {\r\n                            if (!r.exc) {\r\n                                frappe.show_alert({ message: __(\"Rejection comment added to activity log.\"), indicator: \"green\" });\r\n                                frm.reload_doc(); // reload to show in timeline\r\n                            } else {\r\n                                frappe.msgprint(__('Failed to add rejection comment.'));\r\n                            }\r\n\r\n                            // Continue workflow action\r\n                            frm.workflow_action_pending = false;\r\n                            dialog.hide();\r\n                            frm.trigger_workflow_action(frm.selected_workflow_action);\r\n                        },\r\n                        always: function() {\r\n                            dialog.get_primary_btn().text(__('Submit'));\r\n                            dialog.get_primary_btn().prop('disabled', false);\r\n                        }\r\n                    });\r\n                }\r\n            });\r\n\r\n            dialog.show();\r\n        }\r\n    }\r\n});\r\n",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Material Request",
+  "enabled": 0,
+  "modified": "2025-11-05 15:31:09.291531",
+  "module": null,
+  "name": "AutoPopup",
+  "script": "frappe.ui.form.on('Material Request', {\n    // Replace 'Your_DocType_Name' with the actual DocType name\n    before_workflow_action: function(frm, workflow_action) {\n        if (workflow_action === 'Reject') { // Or the specific action name for rejection\n            frappe.prompt({\n                fieldname: 'rejection_comments',\n                fieldtype: 'Long Text',\n                label: 'Reason for Rejection',\n                reqd: 1, // Make comments mandatory\n                default: ''\n            }, function(values) {\n                if (values.rejection_comments) {\n                    // Set a custom field on the DocType to store comments temporarily (optional)\n              \n                    // Create a Communication entry\n                    frappe.call({\n                        method: \"frappe.desk.form.utils.add_comment\",\n                        args: {\n                            reference_doctype: frm.doctype,\n                            reference_name: frm.doc.name,\n                            comment: values.rejection_comments,\n                            comment_email: frappe.session.user_email,\n                            comment_type: \"Comment\" // Or \"Rejection\" if you have a custom type\n                        },\n                        callback: function(r) {\n                            if (r.message) {\n                                frappe.msgprint(__('Rejection comments added to Communication.'));\n                            }\n                        }\n                    });\n\n                    // Proceed with the rejection workflow action\n                    frm.trigger_workflow_action(workflow_action);\n                } else {\n                    frappe.msgprint(__('Rejection comments are mandatory.'));\n                }\n            }, __('Enter Rejection Comments'), __('Reject')); // Title and primary button text\n            return false; // Prevent default workflow action until comments are entered\n        }\n    }\n});",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Request for Quotation",
+  "enabled": 1,
+  "modified": "2025-11-06 09:37:57.710821",
+  "module": null,
+  "name": "RFQPopup",
+  "script": "frappe.ui.form.on('Request for Quotation', {\n    before_workflow_action: function(frm) {\n        if (frm.selected_workflow_action === 'Reject') {\n            frm.workflow_action_pending = true;\n\n            let dialog = new frappe.ui.Dialog({\n                title: __('Please enter Rejection Comments'),\n                fields: [\n                    {\n                        fieldname: 'rejection_comments',\n                        fieldtype: 'Small Text',\n                        label: __('Comments'),\n                        reqd: 1\n                    }\n                ],\n                primary_action_label: __('Submit'),\n                primary_action: function(values) {\n                    let comments = values.rejection_comments;\n\n                    // Disable the button while processing\n                    dialog.get_primary_btn().text(__('Saving...'));\n                    dialog.get_primary_btn().prop('disabled', true);\n\n                    // Add the comment to the timeline (and wait for it to save)\n                    frappe.call({\n                        method: \"frappe.desk.form.utils.add_comment\",\n                        args: {\n                            reference_doctype: frm.doctype,\n                            reference_name: frm.doc.name,\n                            content: `❌ Rejected with comments: ${comments}`,\n                            comment_email: frappe.session.user,\n                            comment_by: frappe.session.user_fullname,\n                            comment_type: \"Info\"\n                        },\n                        callback: function(r) {\n                            if (!r.exc) {\n                                frappe.show_alert({ message: __(\"Rejection comment added to activity log.\"), indicator: \"green\" });\n                                frm.reload_doc(); // reload to show in timeline\n                            } else {\n                                frappe.msgprint(__('Failed to add rejection comment.'));\n                            }\n\n                            // Continue workflow action\n                            frm.workflow_action_pending = false;\n                            dialog.hide();\n                            frm.trigger_workflow_action(frm.selected_workflow_action);\n                        },\n                        always: function() {\n                            dialog.get_primary_btn().text(__('Submit'));\n                            dialog.get_primary_btn().prop('disabled', false);\n                        }\n                    });\n                }\n            });\n\n            dialog.show();\n        }\n    }\n});\n",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Material Request",
+  "enabled": 0,
+  "modified": "2025-11-13 23:36:52.166959",
+  "module": null,
+  "name": "Item Filter on MR Form",
+  "script": "frappe.ui.form.on('Material Request', {\r\n    onload: function(frm) {\r\n        // Run the filter setup when the form loads\r\n        set_item_filter(frm);\r\n    },\r\n\r\n    set_warehouse: function(frm) {\r\n        // Re-run the filter whenever warehouse changes\r\n        set_item_filter(frm);\r\n    }\r\n});\r\n\r\nfunction set_item_filter(frm) {\r\n    frm.fields_dict.items.grid.get_field('item_code').get_query = function(doc, cdt, cdn) {\r\n        if (!frm.doc.set_warehouse) {\r\n            frappe.msgprint(__('Please select a Target Warehouse before adding items.'));\r\n            return { filters: [[\"name\", \"=\", \"\"]] }; // no items if warehouse not selected\r\n        }\r\n        return {\r\n            filters: {\r\n                default_warehouse: frm.doc.set_warehouse,\r\n                disabled: 0\r\n            }\r\n        };\r\n    };\r\n}\r\n",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Material Request",
+  "enabled": 0,
+  "modified": "2025-11-14 17:39:54.746511",
+  "module": null,
+  "name": "Actual_qty_ms",
+  "script": "frappe.ui.form.on(\"Material Request Item\", {\r\n    item_code: function(frm, cdt, cdn) {\r\n        let row = locals[cdt][cdn];\r\n        if (row.item_code && row.warehouse) {\r\n            frappe.call({\r\n                method: \"erpnext.stock.utils.get_bin_details\",\r\n                args: {\r\n                    item_code: row.item_code,\r\n                    warehouse: row.warehouse\r\n                },\r\n                callback: function(r) {\r\n                    if (r.message) {\r\n                        frappe.model.set_value(cdt, cdn, \"actual_qty\", r.message.actual_qty || 0);\r\n                    }\r\n                }\r\n            });\r\n        }\r\n    },\r\n    warehouse: function(frm, cdt, cdn) {\r\n        frm.events.item_code(frm, cdt, cdn);\r\n    }\r\n});\r\n",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Material Request",
+  "enabled": 1,
+  "modified": "2025-11-15 12:05:35.730035",
+  "module": null,
+  "name": "Check Stock",
+  "script": "frappe.ui.form.on(\"Item\", {frappe.msgprint(\"Document submitted successfully\");\r\n\r\n    refresh: function(frm) {\r\n        if (!frm.doc.item_code) return;\r\n\r\n        frappe.call({\r\n            method: \"frappe.client.get_list\",\r\n            args: {\r\n                doctype: \"Bin\",\r\n                filters: { item_code: frm.doc.item_code },\r\n                fields: [\"sum(custom_actual_qty_ms) as custom_actual_qty_ms\"]\r\n            },\r\n            callback: function(r) {\r\n                if (r.message && r.message.length) {\r\n                    frm.set_value(\"custom_actual_qty_ms\", r.message[0].custom_actual_qty_ms || 0);\r\n\t\t\t\t\tfrappe.msgprint(\"Document submitted successfully\");\r\n                }\r\n            }\r\n        });\r\n    }\r\n});\r\n",
+  "view": "Form"
+ }
+]
